@@ -52,7 +52,26 @@ SYSTEM_PROMPT = """Ты — Huntly, умный карьерный советни
 • Конкретные советы, не общие фразы
 • Честен если вакансия не подходит
 • Мотивирует не сдаваться в поиске
-• Отвечаешь на языке пользователя"""
+• Отвечаешь на языке пользователя
+
+════════════════════════════════════════
+🤝 РЕФЕРАЛЫ
+════════════════════════════════════════
+
+Когда просят найти реферала — используй search_referrals и get_referral_guide.
+
+Объясняй стратегию:
+• Реферал от сотрудника в 3-5 раз увеличивает шансы пройти HR-скрининг
+• Лучшие источники: LinkedIn Alumni, Teamblind, Telegram-каналы, refer.me
+• Как писать сообщение: коротко, конкретно, с ценностью для рефера
+• Некоторые компании платят сотрудникам бонус за реферала — это мотивация
+
+Шаблон эффективного сообщения рефералу:
+"Привет [имя]! Я [должность] с [N] лет опыта в [стек]. Хочу подать заявку в [компания] 
+на позицию [роль]. Мог бы ты меня порекомендовать? Взамен расскажу всё о своём опыте. 
+Спасибо!"
+
+После поиска рефералов — предлагай помочь написать персональное сообщение для конкретного человека."""
 
 TOOLS = [
     {
@@ -158,6 +177,29 @@ TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "search_referrals",
+        "description": "Найти людей готовых дать реферал в IT компании. Ищет в Telegram-каналах и показывает ресурсы.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "company": {"type": "string", "description": "Название компании (опционально)"},
+                "position": {"type": "string", "description": "Должность или стек (опционально)"},
+                "user_id": {"type": "integer"},
+            },
+        },
+    },
+    {
+        "name": "get_referral_guide",
+        "description": "Получить гайд как найти реферала, ресурсы и шаблон сообщения",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "company": {"type": "string"},
+                "skills": {"type": "string"},
+            },
+        },
+    },
 ]
 
 
@@ -223,6 +265,45 @@ async def execute_tool(name: str, input_data: dict) -> str:
                 "query": query,
                 "message": f"Выполни поиск: {query} — найди актуальные вакансии и опиши их"
             })
+
+        elif name == "search_referrals":
+            from referral_fetcher import search_referrals_telegram, search_referrals_web, KNOWN_REFERRAL_RESOURCES
+            company = input_data.get("company", "")
+            position = input_data.get("position", "")
+            user_id = input_data.get("user_id")
+
+            # Получаем профиль для контекста
+            user_skills = ""
+            if user_id:
+                user = await db.get_user(user_id)
+                if user:
+                    user_skills = user.get("skills", "")
+
+            # Ищем в Telegram
+            tg_posts = await search_referrals_telegram(
+                query=company or position,
+                company=company
+            )
+
+            # Веб ресурсы
+            web_sources = await search_referrals_web(company=company, position=position)
+
+            result = {
+                "telegram_posts_found": len(tg_posts),
+                "telegram_posts": tg_posts[:5],
+                "web_resources": web_sources,
+                "known_platforms": KNOWN_REFERRAL_RESOURCES[:5],
+                "user_skills": user_skills,
+            }
+            return json.dumps(result, ensure_ascii=False)
+
+        elif name == "get_referral_guide":
+            from referral_fetcher import get_referral_guide
+            guide = await get_referral_guide(
+                company=input_data.get("company", ""),
+                skills=input_data.get("skills", ""),
+            )
+            return json.dumps(guide, ensure_ascii=False)
 
         return f"Инструмент '{name}' не найден"
     except Exception as e:
