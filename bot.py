@@ -57,11 +57,12 @@ async def agent_reply(message: Message, text: str):
 def main_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.add(InlineKeyboardButton(text="🔍 Найти вакансии сейчас", callback_data="search_now"))
+    builder.add(InlineKeyboardButton(text="🤝 Найти реферала", callback_data="find_referral"))
     builder.add(InlineKeyboardButton(text="👤 Мой профиль", callback_data="my_profile"))
     builder.add(InlineKeyboardButton(text="⭐ Сохранённые", callback_data="saved"))
     builder.add(InlineKeyboardButton(text="📊 Статистика", callback_data="stats"))
     builder.add(InlineKeyboardButton(text="⚙️ Настроить поиск", callback_data="settings"))
-    builder.adjust(1)
+    builder.adjust(2)
     return builder.as_markup()
 
 
@@ -213,6 +214,31 @@ async def cmd_ask(message: Message):
     )
 
 
+@dp.message(Command("referrals"))
+async def cmd_referrals(message: Message):
+    await db.ensure_user(message.from_user.id)
+    from referral_fetcher import KNOWN_REFERRAL_RESOURCES
+    platforms = [r for r in KNOWN_REFERRAL_RESOURCES if r["type"] == "platform"]
+    communities = [r for r in KNOWN_REFERRAL_RESOURCES if r["type"] in ("community", "telegram")]
+    parts = [
+        "Поиск рефералов",
+        "",
+        "Реферал от сотрудника = в 3-5 раз больше шансов на интервью!",
+        "",
+        "Платформы:",
+    ]
+    for p in platforms[:4]:
+        parts.append("- [" + p["name"] + "](" + p["url"] + ") - " + p["description"])
+    parts.append("")
+    parts.append("Сообщества:")
+    for c in communities[:3]:
+        parts.append("- [" + c["name"] + "](" + c["url"] + ") - " + c["description"])
+    parts.append("")
+    parts.append("Напиши компанию и я найду рефералов и составлю сообщение!")
+    parts.append("Пример: Ищу реферала в Яндекс")
+    await message.answer("\n".join(parts), parse_mode="Markdown", disable_web_page_preview=True)
+
+
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
@@ -275,6 +301,18 @@ async def cb_stats(callback: CallbackQuery):
         parse_mode="Markdown"
     )
 
+
+
+@dp.callback_query(F.data == "find_referral")
+async def cb_find_referral(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "Поиск рефералов!\n\n"
+        "Напиши компанию и я найду рефералов.\n\n"
+        "Пример: Ищу реферала в Яндекс\n"
+        "Или: Найди реферала в Google для Python разработчика",
+        parse_mode="Markdown"
+    )
 
 @dp.callback_query(F.data == "settings")
 async def cb_settings(callback: CallbackQuery):
@@ -390,6 +428,7 @@ async def set_bot_commands():
         BotCommand(command="profile", description="👤 Мой профиль поиска"),
         BotCommand(command="saved", description="⭐ Сохранённые вакансии"),
         BotCommand(command="stats", description="📊 Статистика поиска"),
+        BotCommand(command="referrals", description="🤝 Найти реферала"),
         BotCommand(command="ask", description="💬 Ручной поиск"),
         BotCommand(command="help", description="Помощь"),
     ])
